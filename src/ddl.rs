@@ -341,6 +341,25 @@ struct AlterTarget {
 unsafe fn lookup_target(rv: *mut pg_sys::RangeVar) -> Option<AlterTarget> {
     let (schema, table) = unsafe { resolve_rangevar(rv) }?;
     pgrx::Spi::connect(|client| {
+        // With the library in shared_preload_libraries this hook fires in
+        // every database in the cluster — including ones where the extension
+        // was never CREATE EXTENSION'd and `deltax.deltax_deltatable` does
+        // not exist. Querying it there raises 42P01 and breaks the user's
+        // ALTER TABLE outright (issue #24). `to_regclass` returns NULL
+        // instead of erroring, so probe first and treat "no catalog" as
+        // "not our table".
+        let catalog_exists = client
+            .select(
+                "SELECT to_regclass('deltax.deltax_deltatable') IS NOT NULL",
+                None,
+                &[],
+            )?
+            .first()
+            .get_one::<bool>()?
+            .unwrap_or(false);
+        if !catalog_exists {
+            return Ok::<Option<AlterTarget>, pgrx::spi::Error>(None);
+        }
         let ht = match catalog::get_deltatable(client, &schema, &table)? {
             Some(ht) => ht,
             None => match catalog::get_partition_by_name(client, &schema, &table)? {

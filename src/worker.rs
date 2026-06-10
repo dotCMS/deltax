@@ -24,7 +24,15 @@ pub fn register_bgworker() {
 #[unsafe(no_mangle)]
 pub extern "C-unwind" fn deltax_worker_main(_arg: pg_sys::Datum) {
     BackgroundWorker::attach_signal_handlers(SignalWakeFlags::SIGHUP | SignalWakeFlags::SIGTERM);
-    BackgroundWorker::connect_worker_to_spi(Some("postgres"), None);
+    // Worker database is configurable via `pg_deltax.target_database`
+    // (Postmaster context — the SPI binding below is once-per-worker-lifetime,
+    // so a change only takes effect on server restart). Defaults to "postgres".
+    let target_db = crate::TARGET_DATABASE
+        .get()
+        .and_then(|c| c.to_str().ok().map(str::to_owned))
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "postgres".to_string());
+    BackgroundWorker::connect_worker_to_spi(Some(&target_db), None);
 
     // The worker runs as superuser (BackgroundWorkerInitializeConnection with
     // username = NULL sets am_superuser = true), so an attacker who can plant
