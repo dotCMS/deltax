@@ -29,10 +29,11 @@ pg_module_magic!();
 
 pub(crate) static MOCK_NOW: GucSetting<Option<CString>> = GucSetting::<Option<CString>>::new(None);
 
-/// Database the maintenance background worker connects to. SPI binds a
-/// background worker to exactly one database for its lifetime, so the worker
-/// services deltatables registered in this one database only. Default
-/// "postgres" preserves upstream behaviour.
+/// Comma-separated list of databases the maintenance background worker(s)
+/// connect to. SPI binds a background worker to exactly one database for its
+/// lifetime, so one static worker is registered per listed database and each
+/// services only deltatables registered there. Default "postgres" preserves
+/// upstream behaviour (a single worker on the postgres database).
 pub(crate) static TARGET_DATABASE: GucSetting<Option<CString>> =
     GucSetting::<Option<CString>>::new(Some(c"postgres"));
 
@@ -218,8 +219,8 @@ $$;
 pub extern "C-unwind" fn _PG_init() {
     GucRegistry::define_string_guc(
         c"pg_deltax.target_database",
-        c"Database the pg_deltax maintenance worker connects to",
-        c"The maintenance worker connects to exactly one database and services only deltatables registered there. Set this to the database holding your deltatables if it is not 'postgres'. Changing it requires a server restart.",
+        c"Comma-separated database(s) the pg_deltax maintenance worker services",
+        c"One maintenance worker is registered per listed database; each connects to exactly one database and services only deltatables registered there. Each entry consumes a max_worker_processes slot. Changing the list requires a server restart.",
         &TARGET_DATABASE,
         GucContext::Postmaster,
         GucFlags::default(),

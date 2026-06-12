@@ -9,28 +9,63 @@ use crate::partition;
 
 const DEFAULT_WORKER_INTERVAL_SECS: u64 = 60;
 
-/// Register the background worker at extension load time.
+/// Parse `pg_deltax.target_database` into a trimmed, deduplicated,
+/// order-preserving list of database names. An empty/blank GUC yields
+/// the upstream default `["postgres"]`.
+pub(crate) fn target_databases() -> Vec<String> {
+    let raw = crate::TARGET_DATABASE
+        .get()
+        .and_then(|c| c.to_str().ok().map(str::to_owned))
+        .unwrap_or_default();
+    let mut seen = std::collections::HashSet::new();
+    let dbs: Vec<String> = raw
+        .split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .filter(|s| seen.insert(s.to_string()))
+        .map(str::to_owned)
+        .collect();
+    if dbs.is_empty() {
+        vec!["postgres".to_string()]
+    } else {
+        dbs
+    }
+}
+
+/// Register the background worker(s) at extension load time.
+///
+/// A background worker is bound to a single database for its lifetime
+/// (`connect_worker_to_spi`), so a comma-separated `target_database` list
+/// means one static worker per entry. This runs from `_PG_init` during
+/// shared_preload_libraries processing, by which point postgresql.conf
+/// values for custom GUCs have already been applied — so the list is
+/// readable here. Each worker consumes one max_worker_processes slot;
+/// changing the list requires a restart (the GUC is Postmaster context).
 pub fn register_bgworker() {
-    BackgroundWorkerBuilder::new("pg_deltax maintenance worker")
-        .set_function("deltax_worker_main")
-        .set_library("pg_deltax")
-        .set_argument(0i32.into_datum())
-        .enable_spi_access()
-        .set_start_time(BgWorkerStartTime::RecoveryFinished)
-        .load();
+    for (i, db) in target_databases().iter().enumerate() {
+        BackgroundWorkerBuilder::new(&format!("pg_deltax maintenance worker ({})", db))
+            .set_function("deltax_worker_main")
+            .set_library("pg_deltax")
+            .set_argument((i as i32).into_datum())
+            .enable_spi_access()
+            .set_start_time(BgWorkerStartTime::RecoveryFinished)
+            .load();
+    }
 }
 
 #[pg_guard]
 #[unsafe(no_mangle)]
-pub extern "C-unwind" fn deltax_worker_main(_arg: pg_sys::Datum) {
+pub extern "C-unwind" fn deltax_worker_main(arg: pg_sys::Datum) {
     BackgroundWorker::attach_signal_handlers(SignalWakeFlags::SIGHUP | SignalWakeFlags::SIGTERM);
-    // Worker database is configurable via `pg_deltax.target_database`
-    // (Postmaster context — the SPI binding below is once-per-worker-lifetime,
-    // so a change only takes effect on server restart). Defaults to "postgres".
-    let target_db = crate::TARGET_DATABASE
-        .get()
-        .and_then(|c| c.to_str().ok().map(str::to_owned))
-        .filter(|s| !s.is_empty())
+    // Each registered worker carries its index into the target_databases()
+    // list as its argument; re-derive the list (the GUC is inherited from
+    // the postmaster) and connect to our entry. The SPI binding is
+    // once-per-worker-lifetime, so list changes take effect on restart.
+    let idx = unsafe { i32::from_datum(arg, false) }.unwrap_or(0).max(0) as usize;
+    let dbs = target_databases();
+    let target_db = dbs
+        .get(idx)
+        .cloned()
         .unwrap_or_else(|| "postgres".to_string());
     BackgroundWorker::connect_worker_to_spi(Some(&target_db), None);
 

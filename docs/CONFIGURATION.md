@@ -31,7 +31,7 @@ All settings are PostgreSQL GUCs and follow the usual scoping rules (`SET`, `ALT
 
 | GUC | Default | Context | Description |
 |---|---|---|---|
-| `pg_deltax.target_database` | `postgres` | postmaster | Database the maintenance background worker connects to. A background worker binds to exactly one database for its lifetime, so the worker drains, premakes, compresses and applies retention only for deltatables registered in this database. Set it to the database holding your deltatables if that is not `postgres`. Requires a server restart to take effect. |
+| `pg_deltax.target_database` | `postgres` | postmaster | Comma-separated list of databases the maintenance background worker services (e.g. `postgres,metrics_db`). A background worker binds to exactly one database for its lifetime, so one worker is registered per listed database; each drains, premakes, compresses and applies retention only for deltatables registered in its own database. Entries are trimmed and deduplicated; each consumes one `max_worker_processes` slot. `pg_stat_activity` shows one `pg_deltax maintenance worker (<db>)` row per entry. Requires a server restart to take effect. |
 
 ## Testing
 
