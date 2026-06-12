@@ -11,7 +11,10 @@ const DEFAULT_WORKER_INTERVAL_SECS: u64 = 60;
 
 /// Parse `pg_deltax.target_database` into a trimmed, deduplicated,
 /// order-preserving list of database names. An empty/blank GUC yields
-/// the upstream default `["postgres"]`.
+/// the upstream default `["postgres"]`. Only call this from a launched
+/// process (launcher or worker) — custom-GUC values from postgresql.conf
+/// are not reliably visible during `_PG_init` (verified empirically with
+/// both the pgrx GucSetting and GetConfigOption).
 pub(crate) fn target_databases() -> Vec<String> {
     let raw = crate::TARGET_DATABASE
         .get()
@@ -32,34 +35,66 @@ pub(crate) fn target_databases() -> Vec<String> {
     }
 }
 
-/// Register the background worker(s) at extension load time.
+/// Register the static launcher at extension load time.
 ///
 /// A background worker is bound to a single database for its lifetime
 /// (`connect_worker_to_spi`), so a comma-separated `target_database` list
-/// means one static worker per entry. This runs from `_PG_init` during
-/// shared_preload_libraries processing, by which point postgresql.conf
-/// values for custom GUCs have already been applied — so the list is
-/// readable here. Each worker consumes one max_worker_processes slot;
-/// changing the list requires a restart (the GUC is Postmaster context).
+/// means one worker per entry. The fan-out cannot happen here: custom-GUC
+/// values from postgresql.conf are not reliably visible during `_PG_init`
+/// (verified empirically — both the pgrx GucSetting and GetConfigOption
+/// still return the built-in default at this point). Instead a single
+/// static launcher starts after recovery, reads the list with the GUC
+/// system fully initialized, and spawns one dynamic worker per entry —
+/// the same pattern pg_cron and pg_partman use. Launcher + each worker
+/// consume one max_worker_processes slot apiece; list changes require a
+/// restart (the GUC is Postmaster context).
 pub fn register_bgworker() {
-    for (i, db) in target_databases().iter().enumerate() {
-        BackgroundWorkerBuilder::new(&format!("pg_deltax maintenance worker ({})", db))
-            .set_function("deltax_worker_main")
-            .set_library("pg_deltax")
-            .set_argument((i as i32).into_datum())
-            .enable_spi_access()
-            .set_start_time(BgWorkerStartTime::RecoveryFinished)
-            .load();
+    BackgroundWorkerBuilder::new("pg_deltax maintenance launcher")
+        .set_function("deltax_launcher_main")
+        .set_library("pg_deltax")
+        .set_argument(0i32.into_datum())
+        .enable_spi_access()
+        .set_start_time(BgWorkerStartTime::RecoveryFinished)
+        .load();
+}
+
+#[pg_guard]
+#[unsafe(no_mangle)]
+pub extern "C-unwind" fn deltax_launcher_main(_arg: pg_sys::Datum) {
+    BackgroundWorker::attach_signal_handlers(SignalWakeFlags::SIGHUP | SignalWakeFlags::SIGTERM);
+    let dbs = target_databases();
+    for (i, db) in dbs.iter().enumerate() {
+        let spawned = BackgroundWorkerBuilder::new(&format!(
+            "pg_deltax maintenance worker ({})",
+            db
+        ))
+        .set_function("deltax_worker_main")
+        .set_library("pg_deltax")
+        .set_argument((i as i32).into_datum())
+        .enable_spi_access()
+        .set_restart_time(Some(Duration::from_secs(60)))
+        .load_dynamic();
+        match spawned {
+            Ok(_) => log!("pg_deltax: launched maintenance worker for database {}", db),
+            Err(e) => log!(
+                "pg_deltax: failed to launch maintenance worker for {}: {:?}",
+                db,
+                e
+            ),
+        }
     }
+    // Fan-out complete; the launcher exits. The static registration has no
+    // restart time (BGW_NEVER_RESTART), and the dynamic workers are owned
+    // by the postmaster from here on.
 }
 
 #[pg_guard]
 #[unsafe(no_mangle)]
 pub extern "C-unwind" fn deltax_worker_main(arg: pg_sys::Datum) {
     BackgroundWorker::attach_signal_handlers(SignalWakeFlags::SIGHUP | SignalWakeFlags::SIGTERM);
-    // Each registered worker carries its index into the target_databases()
-    // list as its argument; re-derive the list (the GUC is inherited from
-    // the postmaster) and connect to our entry. The SPI binding is
+    // Each spawned worker carries its index into the target_databases()
+    // list as its argument; re-derive the list (fully initialized in a
+    // worker process) and connect to our entry. The SPI binding is
     // once-per-worker-lifetime, so list changes take effect on restart.
     let idx = unsafe { i32::from_datum(arg, false) }.unwrap_or(0).max(0) as usize;
     let dbs = target_databases();
