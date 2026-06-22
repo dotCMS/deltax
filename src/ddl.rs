@@ -345,12 +345,21 @@ unsafe fn lookup_target(rv: *mut pg_sys::RangeVar) -> Option<AlterTarget> {
         // every database in the cluster — including ones where the extension
         // was never CREATE EXTENSION'd and `deltax.deltax_deltatable` does
         // not exist. Querying it there raises 42P01 and breaks the user's
-        // ALTER TABLE outright (issue #24). `to_regclass` returns NULL
-        // instead of erroring, so probe first and treat "no catalog" as
-        // "not our table".
+        // ALTER TABLE outright (issue #24).
+        //
+        // The original fix used `to_regclass('deltax.deltax_deltatable')`, but
+        // that name resolution requires USAGE on the `deltax` schema — tenant
+        // roles that pre-date the provisioner's deltax grant don't have it, so
+        // the guard itself raises "permission denied for schema deltax". Use
+        // pg_catalog tables directly instead: they're accessible to all users
+        // regardless of schema ACLs.
         let catalog_exists = client
             .select(
-                "SELECT to_regclass('deltax.deltax_deltatable') IS NOT NULL",
+                "SELECT EXISTS(\
+                    SELECT 1 FROM pg_catalog.pg_namespace n \
+                    JOIN pg_catalog.pg_class c ON c.relnamespace = n.oid \
+                    WHERE n.nspname = 'deltax' AND c.relname = 'deltax_deltatable'\
+                )",
                 None,
                 &[],
             )?
