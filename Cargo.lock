@@ -1214,7 +1214,7 @@ dependencies = [
 
 [[package]]
 name = "pg_deltax"
-version = "0.2.0-dotcms.4"
+version = "0.2.0-dotcms.5"
 dependencies = [
  "ahash",
  "cardinality-estimator",
