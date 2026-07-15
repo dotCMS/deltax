@@ -413,7 +413,7 @@ pub(super) unsafe fn decompress_blob_to_datums_truncated(
 ///
 /// Instead of allocating a PG varlena datum for every row and then filtering,
 /// this matches the LIKE pattern against raw `&str` slices (zero-copy) and only
-/// calls `str_to_text_datum()` for rows that match. Non-matching rows get a
+/// builds real datums (via `str_slices_to_text_datums_arena`) for rows that match. Non-matching rows get a
 /// dummy datum that will never be read (the returned selection vector marks them
 /// as filtered out).
 ///
@@ -1419,8 +1419,6 @@ pub(super) unsafe fn decompress_jsonb_blob_with_selection(
     }
 }
 
-/// Create a text/varchar/bpchar datum from a Rust string.
-/// Allocates in the current memory context.
 /// Compare two strings using PG's collation-aware comparison.
 /// Returns negative if a < b, 0 if equal, positive if a > b.
 #[inline]
@@ -1436,50 +1434,47 @@ pub(super) unsafe fn collation_strcmp(a: &str, b: &str) -> i32 {
     }
 }
 
-pub(super) unsafe fn str_to_text_datum(
-    s: &str,
-    type_oid: pg_sys::Oid,
-    typmod: i32,
-) -> pg_sys::Datum {
-    unsafe {
-        // bpchar needs the type input function for padding; jsonb stores
-        // as canonical text and needs the input function to produce a real
-        // jsonb binary Datum (otherwise jsonb operators segfault).
-        if type_oid == pg_sys::BPCHAROID || type_oid == pg_sys::JSONBOID {
-            let cstr = std::ffi::CString::new(s).unwrap();
-            let mut typinput: pg_sys::Oid = pg_sys::InvalidOid;
-            let mut typioparam: pg_sys::Oid = pg_sys::InvalidOid;
-            pg_sys::getTypeInputInfo(type_oid, &mut typinput, &mut typioparam);
-            pg_sys::OidInputFunctionCall(typinput, cstr.as_ptr() as *mut _, typioparam, typmod)
-        } else {
-            // text/varchar: direct varlena construction (avoids type input function lookup)
-            let text = pg_sys::cstring_to_text_with_len(s.as_ptr() as *const _, s.len() as i32);
-            pg_sys::Datum::from(text as usize)
-        }
-    }
-}
-
 /// Allocate text/varchar datums from string slices using a single contiguous allocation.
 ///
 /// Instead of N individual palloc calls (one per string), this allocates one
 /// large block and packs all varlena headers + string data sequentially.
 /// This dramatically improves cache locality during the per-row emit loop.
 ///
-/// For bpchar, falls back to per-string allocation (needs type input function for padding).
+/// For anything that isn't text/varchar, falls back to per-string
+/// reconstruction through the type input function (bpchar padding, and
+/// non-text types stored via their text rendering: text[], inet, numeric, ...).
 pub(super) unsafe fn str_slices_to_text_datums_arena(
     slices: &[&str],
     type_oid: pg_sys::Oid,
     typmod: i32,
 ) -> Vec<pg_sys::Datum> {
-    // bpchar needs the input function for padding. jsonb should normally go
-    // through `byte_slices_to_jsonb_datums_arena` (the bytes are binary, not
-    // UTF-8); this branch is only a safety net for any caller that still
-    // hands us text.
-    if type_oid == pg_sys::BPCHAROID || type_oid == pg_sys::JSONBOID {
+    // Only text/varchar attributes may take the raw-varlena arena fast path.
+    // Any other type_oid means the stored strings are TEXT RENDERINGS of a
+    // different type — bpchar (padding), jsonb (safety net; normally goes
+    // through `byte_slices_to_jsonb_datums_arena`), and the classify_column
+    // fallthrough types (text[], inet, numeric, uuid, ...). Those must be
+    // reconstructed via the type input function so the resulting Datum
+    // matches the attribute's real binary representation — handing a raw
+    // text varlena to a slot whose attribute type is e.g. text[] makes PG
+    // read text bytes as an ArrayType header: garbage dims/pointers, silent
+    // NULLs or a backend crash. One getTypeInputInfo lookup, then one
+    // input-function call per value.
+    if !matches!(type_oid, pg_sys::TEXTOID | pg_sys::VARCHAROID) {
         return unsafe {
+            let mut typinput: pg_sys::Oid = pg_sys::InvalidOid;
+            let mut typioparam: pg_sys::Oid = pg_sys::InvalidOid;
+            pg_sys::getTypeInputInfo(type_oid, &mut typinput, &mut typioparam);
             slices
                 .iter()
-                .map(|s| str_to_text_datum(s, type_oid, typmod))
+                .map(|s| {
+                    let cstr = std::ffi::CString::new(*s).unwrap();
+                    pg_sys::OidInputFunctionCall(
+                        typinput,
+                        cstr.as_ptr() as *mut _,
+                        typioparam,
+                        typmod,
+                    )
+                })
                 .collect()
         };
     }
