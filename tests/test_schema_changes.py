@@ -806,7 +806,9 @@ class TestTier1Sweep:
                 "AT_ResetOptions",
                 "ALTER TABLE metrics ALTER COLUMN temperature SET (n_distinct = 1000)",
                 "ALTER TABLE metrics ALTER COLUMN temperature RESET (n_distinct)",
-                "SELECT attoptions IS NULL FROM pg_attribute "
+                # PG18.7 keeps internal pg_attver metadata after RESET.
+                "SELECT NOT EXISTS (SELECT FROM unnest(attoptions) opt "
+                "WHERE opt LIKE 'n_distinct=%') FROM pg_attribute "
                 "WHERE attrelid = 'metrics'::regclass AND attname = 'temperature'",
                 True,
             ),
