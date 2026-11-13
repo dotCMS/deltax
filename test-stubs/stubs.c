@@ -20,6 +20,7 @@ __attribute__((weak)) void *CurrentMemoryContext = 0;
 __attribute__((weak)) void *ErrorContext = 0;
 __attribute__((weak)) void *error_context_stack = 0;
 __attribute__((weak)) void *get_relation_info_hook = 0;
+__attribute__((weak)) volatile unsigned int InterruptHoldoffCount = 0;
 __attribute__((weak)) int   max_parallel_workers_per_gather = 0;
 __attribute__((weak)) char  pgBufferUsage[256] = {0};
 __attribute__((weak)) void *PG_exception_stack = 0;
@@ -176,6 +177,7 @@ __attribute__((weak)) void errstart_cold(void) {}
 __attribute__((weak)) void pg_re_throw(void) {}
 /* New pgrx dependencies; regular Rust tests must never call the backend. */
 __attribute__((weak)) void MemoryContextAllocExtended(void) { __builtin_trap(); }
+__attribute__((weak)) void MemoryContextRegisterResetCallback(void) { __builtin_trap(); }
 __attribute__((weak)) _Bool message_level_is_interesting(int elevel) {
     (void)elevel;
     __builtin_trap();
