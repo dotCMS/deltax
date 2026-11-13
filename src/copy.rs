@@ -276,8 +276,7 @@ unsafe extern "C-unwind" fn deltax_process_utility(
     // every table in its own machinery. Instead we flag the case and
     // restore our stats after the standard executor returns.
     let mut restore_stats_after_vacuum = false;
-    if !utility_stmt.is_null() && unsafe { pgrx::is_a(utility_stmt, pg_sys::NodeTag::T_VacuumStmt) }
-    {
+    if !utility_stmt.is_null() && unsafe { pgrx::IsA!(utility_stmt, pg_sys::VacuumStmt) } {
         unsafe {
             let vstmt = utility_stmt as *mut pg_sys::VacuumStmt;
             if (*vstmt).rels.is_null() {
@@ -297,19 +296,19 @@ unsafe extern "C-unwind" fn deltax_process_utility(
     // PG executes).
     if !utility_stmt.is_null() {
         let disposition = unsafe {
-            if pgrx::is_a(utility_stmt, pg_sys::NodeTag::T_AlterTableStmt) {
+            if pgrx::IsA!(utility_stmt, pg_sys::AlterTableStmt) {
                 Some(crate::ddl::handle_alter_table(
                     utility_stmt as *mut pg_sys::AlterTableStmt,
                 ))
-            } else if pgrx::is_a(utility_stmt, pg_sys::NodeTag::T_RenameStmt) {
+            } else if pgrx::IsA!(utility_stmt, pg_sys::RenameStmt) {
                 Some(crate::ddl::handle_rename(
                     utility_stmt as *mut pg_sys::RenameStmt,
                 ))
-            } else if pgrx::is_a(utility_stmt, pg_sys::NodeTag::T_AlterObjectSchemaStmt) {
+            } else if pgrx::IsA!(utility_stmt, pg_sys::AlterObjectSchemaStmt) {
                 Some(crate::ddl::handle_alter_object_schema(
                     utility_stmt as *mut pg_sys::AlterObjectSchemaStmt,
                 ))
-            } else if pgrx::is_a(utility_stmt, pg_sys::NodeTag::T_GrantStmt) {
+            } else if pgrx::IsA!(utility_stmt, pg_sys::GrantStmt) {
                 Some(crate::ddl::handle_grant(
                     utility_stmt as *mut pg_sys::GrantStmt,
                 ))
@@ -345,7 +344,7 @@ unsafe extern "C-unwind" fn deltax_process_utility(
         }
     }
 
-    if utility_stmt.is_null() || !unsafe { pgrx::is_a(utility_stmt, pg_sys::NodeTag::T_CopyStmt) } {
+    if utility_stmt.is_null() || !unsafe { pgrx::IsA!(utility_stmt, pg_sys::CopyStmt) } {
         unsafe {
             chain_to_prev(
                 pstmt,
@@ -535,10 +534,10 @@ fn spi_exec(sql: &str) {
 /// doesn't need to pfree explicitly.
 fn bytea_to_datum(data: &[u8]) -> pg_sys::Datum {
     unsafe {
-        let len = data.len() + pg_sys::VARHDRSZ;
+        let len = data.len() + (pg_sys::VARHDRSZ as usize);
         let varlena = pg_sys::palloc(len) as *mut pg_sys::varlena;
-        pgrx::set_varsize_4b(varlena, len as i32);
-        let dest = pgrx::vardata_any(varlena as *const pg_sys::varlena) as *mut u8;
+        pgrx::SET_VARSIZE!(varlena, len as i32);
+        let dest = pgrx::VARDATA_ANY!(varlena).get().cast::<u8>();
         std::ptr::copy_nonoverlapping(data.as_ptr(), dest, data.len());
         pg_sys::Datum::from(varlena as usize)
     }
@@ -2706,7 +2705,7 @@ fn flush_partition_blobs(buf: &mut PartitionBuffer, columns: &[ColumnMeta]) {
         let blobs_oid = *buf
             .blobs_oid_cached
             .get_or_insert_with(|| resolve_relation_oid(blobs_fqn));
-        let drained: Vec<_> = buf.blob_buffer.drain(..).collect();
+        let drained = buf.blob_buffer.drain(..);
         unsafe {
             bulk_heap_insert(
                 blobs_oid,
@@ -2729,7 +2728,7 @@ fn flush_partition_blobs(buf: &mut PartitionBuffer, columns: &[ColumnMeta]) {
         let blooms_oid = *buf
             .blooms_oid_cached
             .get_or_insert_with(|| resolve_relation_oid(blooms_fqn));
-        let drained: Vec<_> = buf.bloom_buffer.drain(..).collect();
+        let drained = buf.bloom_buffer.drain(..);
         unsafe {
             bulk_heap_insert(
                 blooms_oid,
@@ -2753,7 +2752,7 @@ fn flush_partition_blobs(buf: &mut PartitionBuffer, columns: &[ColumnMeta]) {
         let text_lengths_oid = *buf
             .text_lengths_oid_cached
             .get_or_insert_with(|| resolve_relation_oid(text_lengths_fqn));
-        let drained: Vec<_> = buf.text_length_buffer.drain(..).collect();
+        let drained = buf.text_length_buffer.drain(..);
         unsafe {
             bulk_heap_insert(
                 text_lengths_oid,

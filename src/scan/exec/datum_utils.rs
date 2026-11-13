@@ -1506,7 +1506,7 @@ unsafe fn varlena_arena_alloc(slices: &[&[u8]]) -> Vec<pg_sys::Datum> {
         return Vec::new();
     }
     unsafe {
-        const VARHDRSZ: usize = pg_sys::VARHDRSZ;
+        const VARHDRSZ: usize = pg_sys::VARHDRSZ as usize;
         const MAXALIGN: usize = 8;
 
         let total_size: usize = slices
@@ -1521,7 +1521,7 @@ unsafe fn varlena_arena_alloc(slices: &[&[u8]]) -> Vec<pg_sys::Datum> {
         for b in slices {
             let varlena_ptr = arena.add(offset) as *mut pg_sys::varlena;
             let total_len = (VARHDRSZ + b.len()) as i32;
-            pgrx::set_varsize_4b(varlena_ptr, total_len);
+            pgrx::SET_VARSIZE!(varlena_ptr, total_len);
             std::ptr::copy_nonoverlapping(
                 b.as_ptr(),
                 (varlena_ptr as *mut u8).add(VARHDRSZ),

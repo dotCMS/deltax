@@ -618,8 +618,8 @@ pub(super) unsafe fn extract_batch_quals(
                     let datum = *sa_elems.add(ei);
                     if is_text_in {
                         let varlena_ptr = datum.cast_mut_ptr::<pg_sys::varlena>();
-                        let len = pgrx::varsize_any_exhdr(varlena_ptr);
-                        let data = pgrx::vardata_any(varlena_ptr);
+                        let len = pgrx::VARSIZE_ANY_EXHDR!(varlena_ptr).get() as usize;
+                        let data = pgrx::VARDATA_ANY!(varlena_ptr).get();
                         #[allow(clippy::unnecessary_cast)]
                         let bytes = std::slice::from_raw_parts(data as *const u8, len);
                         match std::str::from_utf8(bytes) {
@@ -753,8 +753,8 @@ pub(super) unsafe fn extract_batch_quals(
                 }
                 // Extract pattern string from constant datum
                 let varlena_ptr = (*const_node).constvalue.cast_mut_ptr::<pg_sys::varlena>();
-                let len = pgrx::varsize_any_exhdr(varlena_ptr);
-                let data = pgrx::vardata_any(varlena_ptr);
+                let len = pgrx::VARSIZE_ANY_EXHDR!(varlena_ptr).get() as usize;
+                let data = pgrx::VARDATA_ANY!(varlena_ptr).get();
                 // Cast needed: vardata_any returns *const i8 on Linux, *const u8 on macOS
                 #[allow(clippy::unnecessary_cast)]
                 let pattern_bytes = std::slice::from_raw_parts(data as *const u8, len);
@@ -780,8 +780,8 @@ pub(super) unsafe fn extract_batch_quals(
                     continue;
                 }
                 let varlena_ptr = (*const_node).constvalue.cast_mut_ptr::<pg_sys::varlena>();
-                let len = pgrx::varsize_any_exhdr(varlena_ptr);
-                let data = pgrx::vardata_any(varlena_ptr);
+                let len = pgrx::VARSIZE_ANY_EXHDR!(varlena_ptr).get() as usize;
+                let data = pgrx::VARDATA_ANY!(varlena_ptr).get();
                 #[allow(clippy::unnecessary_cast)]
                 let const_bytes = std::slice::from_raw_parts(data as *const u8, len);
                 let const_str = match std::str::from_utf8(const_bytes) {

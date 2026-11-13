@@ -329,11 +329,11 @@ fn detect_timestamp_unit(
     values: &[Option<i64>],
 ) -> TimestampUnit {
     // If Parquet schema has an explicit timestamp annotation, trust it.
-    if let Some(LogicalType::Timestamp { unit, .. }) = col_descr.logical_type() {
+    if let Some(LogicalType::Timestamp { unit, .. }) = col_descr.logical_type_ref() {
         return match unit {
-            ParquetTimeUnit::MILLIS(_) => TimestampUnit::Millis,
-            ParquetTimeUnit::MICROS(_) => TimestampUnit::Micros,
-            ParquetTimeUnit::NANOS(_) => TimestampUnit::Nanos,
+            ParquetTimeUnit::MILLIS => TimestampUnit::Millis,
+            ParquetTimeUnit::MICROS => TimestampUnit::Micros,
+            ParquetTimeUnit::NANOS => TimestampUnit::Nanos,
         };
     }
 
