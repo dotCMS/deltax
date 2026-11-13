@@ -960,8 +960,7 @@ mod tests {
         assert_eq!(d.value() as i64, -1_234_567_890_123);
     }
 
-    #[test]
-    #[should_panic] // pgrx::error! payload isn't a plain string; just confirm it panics.
+    #[pgrx::pg_test(error = "pg_deltax: SUM overflow beyond bigint range")]
     fn sum_i128_to_datum_overflow_panics_for_int8_result() {
         // Anything beyond i64::MAX must surface as an error rather than
         // silently truncate — wrong sum is worse than a query failure.
@@ -969,8 +968,7 @@ mod tests {
         let _ = sum_i128_to_datum(too_big, pg_sys::INT8OID, pg_sys::INT8OID);
     }
 
-    #[test]
-    #[should_panic]
+    #[pgrx::pg_test(error = "pg_deltax: SUM overflow beyond bigint range")]
     fn sum_i128_to_datum_underflow_panics_for_int8_result() {
         let too_small: i128 = (i64::MIN as i128) - 1;
         let _ = sum_i128_to_datum(too_small, pg_sys::INT8OID, pg_sys::INT8OID);
