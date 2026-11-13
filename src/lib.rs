@@ -353,6 +353,33 @@ mod tests {
         let result = Spi::get_one::<i32>("SELECT 1").expect("query failed");
         assert_eq!(result, Some(1));
     }
+
+    #[pg_extern]
+    fn security_record_second(row: pgrx::composite_type!("record")) -> Option<i64> {
+        row.get_by_index(std::num::NonZeroUsize::new(2).unwrap())
+            .unwrap()
+    }
+
+    // CVE-2026-6460: never reinterpret a stale text attribute as an integer.
+    #[pg_test(error = "row type of datum tuple was altered after the datum's creation")]
+    fn test_rejects_stale_composite_datum() {
+        Spi::run(
+            "CREATE TYPE security_record AS (label text);
+             DO $$
+             DECLARE stale record;
+             BEGIN
+                 BEGIN
+                     ALTER TYPE security_record ADD ATTRIBUTE value text;
+                     stale := ROW('fixture', repeat('x', 32))::security_record;
+                     RAISE EXCEPTION 'undo type change';
+                 EXCEPTION WHEN raise_exception THEN NULL;
+                 END;
+                 ALTER TYPE security_record ADD ATTRIBUTE value bigint;
+                 PERFORM tests.security_record_second(stale);
+             END $$;",
+        )
+        .unwrap();
+    }
 }
 
 #[cfg(test)]

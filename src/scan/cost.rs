@@ -244,7 +244,7 @@ pub(super) unsafe fn get_relpages(rel_oid: pg_sys::Oid) -> i32 {
         if tuple.is_null() {
             return 0;
         }
-        let rel_form = pg_sys::GETSTRUCT(tuple) as pg_sys::Form_pg_class;
+        let rel_form = pgrx::GETSTRUCT!(tuple).get() as pg_sys::Form_pg_class;
         let pages = (*rel_form).relpages;
         pg_sys::ReleaseSysCache(tuple);
         pages
@@ -808,7 +808,7 @@ pub(super) unsafe fn get_reltuples(rel_oid: pg_sys::Oid) -> f64 {
         if tuple.is_null() {
             return 0.0;
         }
-        let rel_form = pg_sys::GETSTRUCT(tuple) as pg_sys::Form_pg_class;
+        let rel_form = pgrx::GETSTRUCT!(tuple).get() as pg_sys::Form_pg_class;
         let tuples = (*rel_form).reltuples;
         pg_sys::ReleaseSysCache(tuple);
         tuples as f64

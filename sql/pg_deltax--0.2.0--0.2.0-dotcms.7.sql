@@ -1,0 +1,2 @@
+-- Binary security rebuild only; the production fork's SQL objects are unchanged.
+-- Preserve existing tables, compressed data, grants and dependent objects.

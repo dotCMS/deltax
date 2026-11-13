@@ -256,12 +256,12 @@ unsafe fn pgrx_text_const_to_string(c: *mut pg_sys::Const) -> Option<String> {
             return None;
         }
         let detoasted = pg_sys::pg_detoast_datum(varlena);
-        let len = pgrx::varsize_any_exhdr(detoasted);
+        let len = pgrx::VARSIZE_ANY_EXHDR!(detoasted).get() as usize;
         // `vardata_any` returns `*const c_char`, whose signedness depends on
         // platform/ABI (i8 on x86_64 PG 18, u8 on aarch64). Cast through
         // `*const u8` so this compiles in both worlds.
         #[allow(clippy::unnecessary_cast)]
-        let data = pgrx::vardata_any(detoasted) as *const u8;
+        let data = pgrx::VARDATA_ANY!(detoasted).get() as *const u8;
         let bytes = std::slice::from_raw_parts(data, len);
         std::str::from_utf8(bytes).ok().map(|s| s.to_string())
     }

@@ -1550,7 +1550,7 @@ unsafe fn is_op_named(
         if tup.is_null() {
             return false;
         }
-        let op = pg_sys::GETSTRUCT(tup) as *const pg_sys::FormData_pg_operator;
+        let op = pgrx::GETSTRUCT!(tup).get() as *const pg_sys::FormData_pg_operator;
         let ok = (*op).oprresult == expected_result
             && expected_left.is_none_or(|t| (*op).oprleft == t)
             && expected_right.is_none_or(|t| (*op).oprright == t);
@@ -1793,7 +1793,7 @@ unsafe fn const_is_positive_numeric(c: *const pg_sys::Const) -> bool {
                 // depends on platform/ABI (i8 on x86_64 PG 18, u8 on aarch64).
                 // Cast through `*const u8` so this compiles in both worlds.
                 #[allow(clippy::unnecessary_cast)]
-                let data = pgrx::vardata_any(detoasted) as *const u8;
+                let data = pgrx::VARDATA_ANY!(detoasted).get() as *const u8;
                 let header = u16::from_le_bytes([*data, *data.add(1)]);
                 let was_toasted = detoasted != varlena_ptr;
                 if was_toasted {

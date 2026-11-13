@@ -16,8 +16,8 @@ PKG_NAME_BASE  ?= pg-deltax
 PGVER          ?= 17
 TAG            ?= v0.0.1-test
 PKGOUT         ?= pkgout
-PGRX_VERSION   ?= 0.17.0
-BUILDER_IMAGE  ?= rust:1-bookworm
+PGRX_VERSION   ?= 0.20.0
+BUILDER_IMAGE  ?= rust:1.99.1-bookworm
 CNPG_BASE      ?= ghcr.io/cloudnative-pg/postgresql:$(PGVER)-minimal-bookworm
 
 .PHONY: build verify clean
@@ -39,7 +39,7 @@ build:
 	    apt-get update; \
 	    apt-get install -y --no-install-recommends \
 	      gnupg2 curl ca-certificates lsb-release \
-	      build-essential pkg-config libssl-dev libclang-dev clang \
+	      build-essential pkg-config libssl-dev libclang-dev clang llvm \
 	      dpkg-dev file binutils; \
 	    echo "deb http://apt.postgresql.org/pub/repos/apt $$(lsb_release -cs)-pgdg main" \
 	      >/etc/apt/sources.list.d/pgdg.list; \
@@ -59,7 +59,7 @@ build:
 	    cargo install cargo-pgrx --version "$$PGRX_VERSION" --locked; \
 	    PG_CONFIG=/usr/lib/postgresql/$$PGVER/bin/pg_config; \
 	    cargo pgrx init "--pg$$PGVER=$$PG_CONFIG"; \
-	    cargo pgrx package --pg-config "$$PG_CONFIG" \
+	    cargo pgrx package --cargo=--locked --pg-config "$$PG_CONFIG" \
 	      --features "pg$$PGVER" --no-default-features; \
 	    \
 	    PKG_FULL_NAME="$${PKG_NAME_BASE}-pg$${PGVER}_$${deb_version}_$${ARCH}"; \
@@ -91,7 +91,7 @@ verify:
 	  bash -euo pipefail -c '\
 	    export DEBIAN_FRONTEND=noninteractive; \
 	    apt-get update; \
-	    apt-get install -y --no-install-recommends "/payload/$(DEB)"; \
+	    apt-get install -y --no-install-recommends postgresql-$(PGVER) "/payload/$(DEB)"; \
 	    pg_createcluster $(PGVER) main; \
 	    pg_ctlcluster $(PGVER) main start -o "-c shared_preload_libraries=$(EXT_NAME)"; \
 	    su postgres -c "psql -c \"CREATE EXTENSION $(EXT_NAME);\""; \

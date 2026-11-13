@@ -1437,8 +1437,8 @@ impl FromDatum for JsonbRaw {
         unsafe {
             let varlena = datum.cast_mut_ptr::<pgrx::pg_sys::varlena>();
             let detoasted = pgrx::pg_sys::pg_detoast_datum(varlena);
-            let total_len = pgrx::varsize_any_exhdr(detoasted);
-            let data_ptr = pgrx::vardata_any(detoasted).cast::<u8>();
+            let total_len = pgrx::VARSIZE_ANY_EXHDR!(detoasted).get() as usize;
+            let data_ptr = pgrx::VARDATA_ANY!(detoasted).get().cast::<u8>();
             let bytes = std::slice::from_raw_parts(data_ptr, total_len).to_vec();
             // pg_detoast_datum allocates a copy in CurrentMemoryContext only
             // when the datum was actually toasted; free it so a long compress
@@ -1497,8 +1497,8 @@ pub(crate) unsafe fn jsonb_text_to_binary(text: &str) -> Vec<u8> {
             pgrx::pg_sys::OidInputFunctionCall(typinput, c_text.as_ptr() as *mut _, typioparam, -1);
         let varlena = datum.cast_mut_ptr::<pgrx::pg_sys::varlena>();
         let detoasted = pgrx::pg_sys::pg_detoast_datum(varlena);
-        let total_len = pgrx::varsize_any_exhdr(detoasted);
-        let data_ptr = pgrx::vardata_any(detoasted).cast::<u8>();
+        let total_len = pgrx::VARSIZE_ANY_EXHDR!(detoasted).get() as usize;
+        let data_ptr = pgrx::VARDATA_ANY!(detoasted).get().cast::<u8>();
         // Copy into Rust heap before resetting the scratch context.
         let bytes = std::slice::from_raw_parts(data_ptr, total_len).to_vec();
 
@@ -1516,12 +1516,12 @@ pub(crate) unsafe fn jsonb_text_to_binary(text: &str) -> Vec<u8> {
 /// Must only be called from the main backend thread.
 pub(crate) unsafe fn jsonb_binary_to_text(payload: &[u8]) -> String {
     unsafe {
-        let total_len = pgrx::pg_sys::VARHDRSZ + payload.len();
+        let total_len = pgrx::pg_sys::VARHDRSZ as usize + payload.len();
         let varlena = pgrx::pg_sys::palloc(total_len) as *mut pgrx::pg_sys::varlena;
-        pgrx::set_varsize_4b(varlena, total_len as i32);
+        pgrx::SET_VARSIZE!(varlena, total_len as i32);
         std::ptr::copy_nonoverlapping(
             payload.as_ptr(),
-            (varlena as *mut u8).add(pgrx::pg_sys::VARHDRSZ),
+            (varlena as *mut u8).add(pgrx::pg_sys::VARHDRSZ as usize),
             payload.len(),
         );
         let mut typoutput: pgrx::pg_sys::Oid = pgrx::pg_sys::InvalidOid;
@@ -2606,7 +2606,7 @@ fn compress_partition_streaming(
             use pgrx::datum::DatumWithOid;
             let insert_sql = format!(
                 "INSERT INTO {} (_col_idx, _segment_id, _data) VALUES ($1, $2, $3)",
-                &ddl.blobs_fqn
+                ddl.blobs_fqn
             );
             let args: Vec<DatumWithOid> = vec![
                 (col_idx as i16).into(),
@@ -2631,7 +2631,7 @@ fn compress_partition_streaming(
                 use pgrx::datum::DatumWithOid;
                 let insert_sql = format!(
                     "INSERT INTO {} (_col_idx, _segment_id, _num_hashes, _data) VALUES ($1, $2, $3, $4)",
-                    &ddl.blooms_fqn
+                    ddl.blooms_fqn
                 );
                 let args: Vec<DatumWithOid> = vec![
                     (col_idx as i16).into(),
@@ -2661,7 +2661,7 @@ fn compress_partition_streaming(
                 use pgrx::datum::DatumWithOid;
                 let insert_sql = format!(
                     "INSERT INTO {} (_col_idx, _segment_id, _data) VALUES ($1, $2, $3)",
-                    &ddl.text_lengths_fqn
+                    ddl.text_lengths_fqn
                 );
                 let args: Vec<DatumWithOid> = vec![
                     (col_idx as i16).into(),
@@ -2818,7 +2818,7 @@ fn finalize_and_insert_valbitmaps(
         use pgrx::datum::DatumWithOid;
         let insert_sql = format!(
             "INSERT INTO {} (_col_idx, _segment_id, _bits) VALUES ($1, $2, $3)",
-            &ddl.valbitmap_fqn
+            ddl.valbitmap_fqn
         );
         let args: Vec<DatumWithOid> = vec![
             (col_idx as i16).into(),

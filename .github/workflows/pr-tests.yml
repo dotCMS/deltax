@@ -12,6 +12,14 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  dependencies:
+    name: Rust dependency security
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567 # v0.3.1
+      - run: trivy fs --config /dev/null --ignorefile /dev/null --scanners vuln --severity HIGH,CRITICAL --exit-code 1 Cargo.lock
+
   lint:
     name: Lint (fmt + clippy)
     runs-on: ubuntu-latest
@@ -42,6 +50,12 @@ jobs:
 
       - name: Run unit tests
         run: make test PG_MAJOR=${{ matrix.pg }}
+      - name: Diagnose standalone test-loader symbols
+        if: failure()
+        run: |
+          docker run --rm --network none --user root --entrypoint sh \
+            -v pg_deltax_target_pg${{ matrix.pg }}:/target:ro pg_deltax-dev:pg${{ matrix.pg }} \
+            -c "find /target/debug/deps -maxdepth 1 -name 'pg_deltax-*' -type f -executable -exec nm -u {} \\;"
 
   integration:
     name: Integration Tests (PG ${{ matrix.pg }})

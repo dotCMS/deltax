@@ -332,8 +332,8 @@ unsafe fn primary_key_index_oid(rel: pg_sys::Relation) -> pg_sys::Oid {
 unsafe fn detoast_varlena_to_vec(varlena_ptr: *mut pg_sys::varlena) -> Vec<u8> {
     unsafe {
         let detoasted = pg_sys::pg_detoast_datum(varlena_ptr);
-        let len = pgrx::varsize_any_exhdr(detoasted);
-        let data = pgrx::vardata_any(detoasted);
+        let len = pgrx::VARSIZE_ANY_EXHDR!(detoasted).get() as usize;
+        let data = pgrx::VARDATA_ANY!(detoasted).get();
         #[allow(clippy::unnecessary_cast)]
         let bytes = std::slice::from_raw_parts(data as *const u8, len).to_vec();
         if detoasted != varlena_ptr {
@@ -496,7 +496,7 @@ unsafe fn reltuples_as_u64(rel_oid: pg_sys::Oid) -> Option<u64> {
         if tuple.is_null() {
             return None;
         }
-        let rel_form = pg_sys::GETSTRUCT(tuple) as pg_sys::Form_pg_class;
+        let rel_form = pgrx::GETSTRUCT!(tuple).get() as pg_sys::Form_pg_class;
         let reltuples = (*rel_form).reltuples;
         pg_sys::ReleaseSysCache(tuple);
         if reltuples > 0.0 {
@@ -3021,8 +3021,8 @@ pub(super) unsafe fn load_segments_heap(
                             let varlena_ptr =
                                 (*tts_values.add(dat_att)).cast_mut_ptr::<pg_sys::varlena>();
                             let detoasted = pg_sys::pg_detoast_datum(varlena_ptr);
-                            let data_ptr = pgrx::vardata_any(detoasted);
-                            let data_len = pgrx::varsize_any_exhdr(detoasted);
+                            let data_ptr = pgrx::VARDATA_ANY!(detoasted).get();
+                            let data_len = pgrx::VARSIZE_ANY_EXHDR!(detoasted).get() as usize;
                             #[allow(clippy::unnecessary_cast)]
                             let bloom_bytes =
                                 std::slice::from_raw_parts(data_ptr as *const u8, data_len);
@@ -3185,8 +3185,8 @@ pub(super) unsafe fn load_segments_heap(
                             let varlena_ptr =
                                 (*tts_values.add(bits_a)).cast_mut_ptr::<pg_sys::varlena>();
                             let detoasted = pg_sys::pg_detoast_datum(varlena_ptr);
-                            let data_ptr = pgrx::vardata_any(detoasted);
-                            let data_len = pgrx::varsize_any_exhdr(detoasted);
+                            let data_ptr = pgrx::VARDATA_ANY!(detoasted).get();
+                            let data_len = pgrx::VARSIZE_ANY_EXHDR!(detoasted).get() as usize;
                             #[allow(clippy::unnecessary_cast)]
                             let bits = std::slice::from_raw_parts(data_ptr as *const u8, data_len);
 
@@ -3382,7 +3382,7 @@ pub(super) unsafe fn load_segments_heap(
                             if is_lazy {
                                 // Lazy: copy just the TOAST pointer
                                 let varlena_ptr = blob_values[2].cast_mut_ptr::<pg_sys::varlena>();
-                                let ptr_size = pgrx::varsize_any(varlena_ptr);
+                                let ptr_size = pgrx::VARSIZE_ANY!(varlena_ptr).get() as usize;
                                 let mut ptr_copy = vec![0u8; ptr_size];
                                 std::ptr::copy_nonoverlapping(
                                     varlena_ptr as *const u8,
@@ -3486,7 +3486,7 @@ pub(super) unsafe fn load_segments_heap(
 
                         if is_lazy {
                             let varlena_ptr = bv[2].cast_mut_ptr::<pg_sys::varlena>();
-                            let ptr_size = pgrx::varsize_any(varlena_ptr);
+                            let ptr_size = pgrx::VARSIZE_ANY!(varlena_ptr).get() as usize;
                             let mut ptr_copy = vec![0u8; ptr_size];
                             std::ptr::copy_nonoverlapping(
                                 varlena_ptr as *const u8,

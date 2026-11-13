@@ -1155,10 +1155,10 @@ unsafe fn cmp_text_datums(a: pg_sys::Datum, b: pg_sys::Datum) -> std::cmp::Order
     unsafe {
         let a_vl = a.cast_mut_ptr::<pg_sys::varlena>();
         let b_vl = b.cast_mut_ptr::<pg_sys::varlena>();
-        let a_ptr = pgrx::vardata_any(a_vl) as *const std::ffi::c_char;
-        let a_len = pgrx::varsize_any_exhdr(a_vl) as i32;
-        let b_ptr = pgrx::vardata_any(b_vl) as *const std::ffi::c_char;
-        let b_len = pgrx::varsize_any_exhdr(b_vl) as i32;
+        let a_ptr = pgrx::VARDATA_ANY!(a_vl).get() as *const std::ffi::c_char;
+        let a_len = (pgrx::VARSIZE_ANY_EXHDR!(a_vl).get() as usize) as i32;
+        let b_ptr = pgrx::VARDATA_ANY!(b_vl).get() as *const std::ffi::c_char;
+        let b_len = (pgrx::VARSIZE_ANY_EXHDR!(b_vl).get() as usize) as i32;
         let result = pg_sys::varstr_cmp(a_ptr, a_len, b_ptr, b_len, pg_sys::DEFAULT_COLLATION_OID);
         result.cmp(&0)
     }
@@ -1857,7 +1857,7 @@ unsafe fn exec_topn_two_pass(
                     } else if is_text_type(state.col_types[ci]) {
                         // Copy varlena to persistent context
                         let varlena_ptr = d.cast_mut_ptr::<pg_sys::varlena>();
-                        let size = pgrx::varsize_any(varlena_ptr);
+                        let size = pgrx::VARSIZE_ANY!(varlena_ptr).get() as usize;
                         let old_mc = pg_sys::MemoryContextSwitchTo(phase1_persist_mcxt);
                         let copy_ptr = pg_sys::palloc(size) as *mut u8;
                         std::ptr::copy_nonoverlapping(varlena_ptr as *const u8, copy_ptr, size);
@@ -3100,7 +3100,7 @@ unsafe fn exec_topn_text_sequential(
                         p1_datums.push((ci, pg_sys::Datum::from(0), true));
                     } else if is_text_type(state.col_types[ci]) {
                         let vl_ptr = d.cast_mut_ptr::<pg_sys::varlena>();
-                        let size = pgrx::varsize_any(vl_ptr);
+                        let size = pgrx::VARSIZE_ANY!(vl_ptr).get() as usize;
                         let old_mc = pg_sys::MemoryContextSwitchTo(phase1_persist_mcxt);
                         let copy_ptr = pg_sys::palloc(size) as *mut u8;
                         std::ptr::copy_nonoverlapping(vl_ptr as *const u8, copy_ptr, size);
