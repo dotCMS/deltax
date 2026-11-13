@@ -59,7 +59,7 @@ build:
 	    cargo install cargo-pgrx --version "$$PGRX_VERSION" --locked; \
 	    PG_CONFIG=/usr/lib/postgresql/$$PGVER/bin/pg_config; \
 	    cargo pgrx init "--pg$$PGVER=$$PG_CONFIG"; \
-	    cargo pgrx package --locked --pg-config "$$PG_CONFIG" \
+	    cargo pgrx package --cargo=--locked --pg-config "$$PG_CONFIG" \
 	      --features "pg$$PGVER" --no-default-features; \
 	    \
 	    PKG_FULL_NAME="$${PKG_NAME_BASE}-pg$${PGVER}_$${deb_version}_$${ARCH}"; \
