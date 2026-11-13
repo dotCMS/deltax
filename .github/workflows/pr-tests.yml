@@ -50,6 +50,12 @@ jobs:
 
       - name: Run unit tests
         run: make test PG_MAJOR=${{ matrix.pg }}
+      - name: Diagnose standalone test-loader symbols
+        if: failure()
+        run: |
+          docker run --rm --network none --user root --entrypoint sh \
+            -v pg_deltax_target_pg${{ matrix.pg }}:/target:ro pg_deltax-dev:pg${{ matrix.pg }} \
+            -c "find /target/debug/deps -maxdepth 1 -name 'pg_deltax-*' -type f -executable -exec nm -u {} \\;"
 
   integration:
     name: Integration Tests (PG ${{ matrix.pg }})

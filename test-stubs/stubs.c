@@ -174,7 +174,8 @@ __attribute__((weak)) int  errmsg(const char *fmt, ...) { (void)fmt; return 0; }
 __attribute__((weak)) int  errstart(int elevel, const char *domain) { (void)elevel; (void)domain; return 0; }
 __attribute__((weak)) void errstart_cold(void) {}
 __attribute__((weak)) void pg_re_throw(void) {}
-/* New pgrx ereport dependency; regular Rust tests must never call the backend. */
+/* New pgrx dependencies; regular Rust tests must never call the backend. */
+__attribute__((weak)) void MemoryContextAllocExtended(void) { __builtin_trap(); }
 __attribute__((weak)) _Bool message_level_is_interesting(int elevel) {
     (void)elevel;
     __builtin_trap();
